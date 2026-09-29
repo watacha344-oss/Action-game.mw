@@ -1,35 +1,46 @@
-* { box-sizing: border-box; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: #0a1424; color: #e6faff; font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; }
+* { box-sizing: border-box; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+html, body { position: fixed; inset: 0; width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; background: #0a1424; color: #e6faff; font-family: "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; }
 #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 
-#hud { position: fixed; inset: 0; pointer-events: none; padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); }
-#wave { font-size: 14px; font-weight: 700; text-shadow: 0 0 6px #000; }
-#party { display: flex; gap: 8px; margin-top: 6px; }
-.card { width: 96px; padding: 5px 7px; background: rgba(10, 20, 36, .7); border: 2px solid rgba(255, 255, 255, .15); border-radius: 6px; opacity: .65; }
+/* 画面左半分どこでもスティック操作(触った位置にスティックが出る) */
+#zone { position: fixed; left: 0; top: 0; width: 48%; height: 100%; z-index: 1; }
+#stick { position: fixed; left: max(40px, env(safe-area-inset-left)); bottom: 36px; width: 140px; height: 140px; border-radius: 50%; background: rgba(0, 229, 255, .08); border: 2px solid rgba(0, 229, 255, .3); display: grid; place-items: center; z-index: 2; pointer-events: none; }
+#stick.on { background: rgba(0, 229, 255, .16); border-color: rgba(0, 229, 255, .7); }
+#knob { width: 56px; height: 56px; border-radius: 50%; background: rgba(0, 229, 255, .55); }
+
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+#wave { position: absolute; left: max(12px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); font-size: 13px; font-weight: 700; text-shadow: 0 0 6px #000; }
+
+/* 右上: 縦並びのパーティ(タップで交代) */
+#party { position: absolute; right: max(10px, env(safe-area-inset-right)); top: max(8px, env(safe-area-inset-top)); display: flex; flex-direction: column; gap: 6px; }
+.card { pointer-events: auto; width: 96px; padding: 4px 7px; background: rgba(10, 20, 36, .7); border: 2px solid rgba(255, 255, 255, .15); border-radius: 6px; opacity: .7; }
 .card.on { border-color: var(--c); opacity: 1; }
 .card.dead { filter: grayscale(1); opacity: .3; }
-.card b { font-size: 13px; }
-.card small { display: block; font-size: 10px; opacity: .7; }
-.card i { display: block; height: 6px; margin-top: 4px; background: rgba(255, 255, 255, .15); }
+.card b { font-size: 12px; }
+.card small { margin-left: 4px; font-size: 9px; opacity: .7; }
+.card i { display: block; height: 5px; margin-top: 3px; background: rgba(255, 255, 255, .15); }
 .card u { display: block; height: 100%; width: 100%; background: var(--c); }
-#eng { position: absolute; left: max(12px, env(safe-area-inset-left)); top: 96px; width: 200px; height: 8px; background: rgba(255, 255, 255, .15); }
-#engf { display: block; height: 100%; width: 0; background: #fff; box-shadow: 0 0 8px #00e5ff; }
-#msg { position: absolute; left: 0; right: 0; top: 28%; text-align: center; font-size: 30px; font-weight: 800; color: #fff; text-shadow: 0 0 12px #00e5ff, 0 2px 4px #000; opacity: 0; transition: opacity .25s; }
 
-#stick { position: fixed; left: max(28px, env(safe-area-inset-left)); bottom: max(24px, env(safe-area-inset-bottom)); width: 150px; height: 150px; border-radius: 50%; background: rgba(0, 229, 255, .12); border: 2px solid rgba(0, 229, 255, .5); display: grid; place-items: center; }
-#knob { width: 60px; height: 60px; border-radius: 50%; background: rgba(0, 229, 255, .55); pointer-events: none; }
+/* 下中央: HPと必殺ゲージ */
+#bar { position: absolute; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(300px, 32vw); text-align: center; }
+#hpn { font-size: 11px; text-shadow: 0 0 4px #000; }
+.track { height: 7px; margin-top: 3px; background: rgba(255, 255, 255, .15); }
+.track i { display: block; height: 100%; width: 100%; background: #7dff8a; }
+.track.ult { height: 5px; }
+.track.ult i { width: 0; background: #fff; box-shadow: 0 0 8px #ff5ad1; }
+#msg { position: absolute; left: 0; right: 0; top: 26%; text-align: center; font-size: 30px; font-weight: 800; color: #fff; text-shadow: 0 0 12px #00e5ff, 0 2px 4px #000; opacity: 0; transition: opacity .25s; }
 
-.b { position: fixed; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6); background: rgba(10, 20, 36, .7); color: #fff; font-size: 13px; font-weight: 700; padding: 0; }
+/* 右下: 攻撃を中心に、スキル・必殺・回避・パリィを親指の届く円弧に配置 */
+.b { position: fixed; z-index: 3; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .6); background: rgba(10, 20, 36, .7); color: #fff; font-size: 13px; font-weight: 700; padding: 0; }
 .b:active { background: rgba(0, 229, 255, .5); }
 .b.off { opacity: .35; }
-#b-atk   { right: 14px;  bottom: 14px;  width: 94px; height: 94px; border-color: #00e5ff; }
-#b-dodge { right: 116px; bottom: 14px;  width: 66px; height: 66px; }
-#b-parry { right: 14px;  bottom: 116px; width: 66px; height: 66px; }
-#b-skill { right: 92px;  bottom: 96px;  width: 66px; height: 66px; border-color: #7dff8a; }
-#b-ult   { right: 172px; bottom: 96px;  width: 66px; height: 66px; border-color: #ff5ad1; }
-#b-swap  { right: 14px;  bottom: 196px; width: 56px; height: 56px; font-size: 12px; }
+#b-atk   { right: calc(28px + env(safe-area-inset-right));  bottom: 36px;  width: 104px; height: 104px; border-color: #00e5ff; font-size: 16px; }
+#b-skill { right: calc(146px + env(safe-area-inset-right)); bottom: 40px;  width: 66px;  height: 66px;  border-color: #7dff8a; }
+#b-ult   { right: calc(138px + env(safe-area-inset-right)); bottom: 116px; width: 66px;  height: 66px;  border-color: #ff5ad1; }
+#b-dodge { right: calc(40px + env(safe-area-inset-right));  bottom: 146px; width: 62px;  height: 62px; }
+#b-parry { right: calc(222px + env(safe-area-inset-right)); bottom: 60px;  width: 58px;  height: 58px; }
 
-#ov { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(10, 20, 36, .88); text-align: center; }
+#ov { position: fixed; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(10, 20, 36, .9); text-align: center; }
 #ov h1 { margin: 0; font-size: 44px; letter-spacing: .12em; color: #00e5ff; text-shadow: 0 0 18px #00e5ff; }
-#ov p { margin: 0; line-height: 1.7; }
+#ov p { margin: 0; line-height: 1.7; font-size: 14px; }
 #go { padding: 12px 44px; font-size: 18px; font-weight: 700; color: #0a1424; background: #00e5ff; border: 0; border-radius: 4px; }

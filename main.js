@@ -3,6 +3,11 @@ import * as THREE from './three.module.min.js';
 const $ = (id) => document.getElementById(id);
 const rnd = (a, b) => a + Math.random() * (b - a);
 
+/* ページのスクロール・拡大・長押しメニューを完全に止める */
+['touchmove', 'gesturestart', 'contextmenu', 'dblclick'].forEach((n) =>
+  document.addEventListener(n, (e) => e.preventDefault(), { passive: false })
+);
+
 /* ---------- Three.js 基本セットアップ ---------- */
 const renderer = new THREE.WebGLRenderer({ canvas: $('c'), antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -76,22 +81,38 @@ function setBody() {
 setBody();
 
 /* ---------- 入力 ---------- */
-const stick = $('stick'), knob = $('knob');
-let sid = null, sx = 0, sy = 0;
+const zone = $('zone'), stick = $('stick'), knob = $('knob');
+let sid = null, ox = 0, oy = 0, sx = 0, sy = 0;
+const R = 60;
 function stickMove(e) {
-  const r = stick.getBoundingClientRect();
-  const m = r.width / 2;
-  let dx = e.clientX - (r.left + m), dy = e.clientY - (r.top + m);
+  let dx = e.clientX - ox, dy = e.clientY - oy;
   const l = Math.hypot(dx, dy);
-  if (l > m) { dx = (dx / l) * m; dy = (dy / l) * m; }
-  sx = dx / m; sy = dy / m;
+  if (l > R) { dx = (dx / l) * R; dy = (dy / l) * R; }
+  sx = dx / R; sy = dy / R;
   knob.style.transform = `translate(${dx}px, ${dy}px)`;
 }
-stick.addEventListener('pointerdown', (e) => { sid = e.pointerId; stick.setPointerCapture(sid); stickMove(e); });
-stick.addEventListener('pointermove', (e) => { if (e.pointerId === sid) stickMove(e); });
-const stickEnd = (e) => { if (e.pointerId === sid) { sid = null; sx = sy = 0; knob.style.transform = ''; } };
-stick.addEventListener('pointerup', stickEnd);
-stick.addEventListener('pointercancel', stickEnd);
+zone.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (sid !== null) return;
+  sid = e.pointerId;
+  zone.setPointerCapture(sid);
+  ox = e.clientX; oy = e.clientY;
+  stick.style.left = ox - 70 + 'px';
+  stick.style.top = oy - 70 + 'px';
+  stick.style.bottom = 'auto';
+  stick.classList.add('on');
+  stickMove(e);
+});
+zone.addEventListener('pointermove', (e) => { if (e.pointerId === sid) stickMove(e); });
+const stickEnd = (e) => {
+  if (e.pointerId !== sid) return;
+  sid = null; sx = 0; sy = 0;
+  knob.style.transform = '';
+  stick.classList.remove('on');
+  stick.style.left = ''; stick.style.top = ''; stick.style.bottom = '';
+};
+zone.addEventListener('pointerup', stickEnd);
+zone.addEventListener('pointercancel', stickEnd);
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
@@ -221,21 +242,25 @@ const ACT = {
     strike(12, 7, 90 * mul());
     say('必殺!');
   },
-  swap() {
+  swap(idx) {
     if (mode !== 'play' || swapCd > 0) return;
-    for (let i = 1; i <= 3; i++) {
-      const n = (cur + i) % 3;
-      if (!party[n].alive) continue;
-      if (n === cur) return;
-      cur = n;
-      setBody();
-      swapCd = 0.8;
-      inv = 0.4;
-      comboT = 0;
-      fx(3, party[n].color);
-      strike(3, 7, 16 * mul());
-      return;
+    let n = -1;
+    if (typeof idx === 'number') {
+      if (idx !== cur && party[idx].alive) n = idx;
+    } else {
+      for (let i = 1; i < 3; i++) {
+        const k = (cur + i) % 3;
+        if (party[k].alive) { n = k; break; }
+      }
     }
+    if (n < 0) return;
+    cur = n;
+    setBody();
+    swapCd = 0.8;
+    inv = 0.4;
+    comboT = 0;
+    fx(3, party[n].color);
+    strike(3, 7, 16 * mul());
   },
 };
 
@@ -358,6 +383,12 @@ function start() {
   act = { type: '', t: 0 };
   $('ov').style.display = 'none';
   mode = 'play';
+  try {
+    const el = document.documentElement;
+    if (el.requestFullscreen && !document.fullscreenElement) {
+      el.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape')).catch(() => {});
+    }
+  } catch (err) { /* 非対応端末は無視 */ }
 }
 $('go').addEventListener('click', start);
 
@@ -411,11 +442,12 @@ function update(dtReal) {
 }
 
 /* ---------- HUD ---------- */
-const cards = party.map((p) => {
+const cards = party.map((p, i) => {
   const c = document.createElement('div');
   c.className = 'card';
   c.style.setProperty('--c', '#' + p.color.toString(16).padStart(6, '0'));
   c.innerHTML = `<b>${p.name}</b><small>${p.role}</small><i><u></u></i>`;
+  c.addEventListener('pointerdown', (e) => { e.preventDefault(); ACT.swap(i); });
   $('party').appendChild(c);
   return { c, u: c.querySelector('u') };
 });
@@ -427,6 +459,8 @@ function hud() {
     cards[i].u.style.width = (p.cur / p.hp) * 100 + '%';
   });
   $('engf').style.width = energy + '%';
+  $('hpf').style.width = (party[cur].cur / party[cur].hp) * 100 + '%';
+  $('hpn').textContent = party[cur].name + '  ' + Math.ceil(party[cur].cur) + '/' + party[cur].hp;
   const cd = party[cur].cdT;
   $('b-ult').classList.toggle('off', energy < 100);
   $('b-skill').classList.toggle('off', cd > 0);
