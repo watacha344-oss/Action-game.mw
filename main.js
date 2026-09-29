@@ -27,13 +27,26 @@ const arena = new THREE.Mesh(new THREE.RingGeometry(17.4, 17.7, 64).rotateX(-Mat
 arena.position.y = 0.02;
 scene.add(arena);
 
-function resize() {
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
-  camera.aspect = window.innerWidth / window.innerHeight;
+let U = 1; // 画面サイズに応じたUI倍率
+function fit() {
+  const vv = window.visualViewport;
+  const w = Math.round(vv ? vv.width : window.innerWidth);
+  const h = Math.round(vv ? vv.height : window.innerHeight);
+  U = Math.max(0.55, Math.min(1.5, Math.min(w / 760, h / 360)));
+  const st = document.documentElement.style;
+  st.setProperty('--vw', w + 'px');
+  st.setProperty('--vh', h + 'px');
+  st.setProperty('--u', U.toFixed(3));
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
-window.addEventListener('resize', resize);
-resize();
+const refit = () => { fit(); setTimeout(fit, 250); };
+window.addEventListener('resize', refit);
+window.addEventListener('orientationchange', refit);
+document.addEventListener('fullscreenchange', refit);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', refit);
+fit();
 camera.position.set(0, 9, 9.5);
 camera.lookAt(0, 0.5, 0);
 
@@ -83,8 +96,8 @@ setBody();
 /* ---------- 入力 ---------- */
 const zone = $('zone'), stick = $('stick'), knob = $('knob');
 let sid = null, ox = 0, oy = 0, sx = 0, sy = 0;
-const R = 60;
 function stickMove(e) {
+  const R = 60 * U;
   let dx = e.clientX - ox, dy = e.clientY - oy;
   const l = Math.hypot(dx, dy);
   if (l > R) { dx = (dx / l) * R; dy = (dy / l) * R; }
@@ -97,8 +110,8 @@ zone.addEventListener('pointerdown', (e) => {
   sid = e.pointerId;
   zone.setPointerCapture(sid);
   ox = e.clientX; oy = e.clientY;
-  stick.style.left = ox - 70 + 'px';
-  stick.style.top = oy - 70 + 'px';
+  stick.style.left = ox - 70 * U + 'px';
+  stick.style.top = oy - 70 * U + 'px';
   stick.style.bottom = 'auto';
   stick.classList.add('on');
   stickMove(e);

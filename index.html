@@ -13,32 +13,36 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <canvas id="c"></canvas>
-  <div id="zone"></div>
+  <div id="app">
+    <canvas id="c"></canvas>
+    <div id="zone"></div>
 
-  <div id="hud">
-    <div id="wave"></div>
-    <div id="party"></div>
-    <div id="bar">
-      <span id="hpn"></span>
-      <div class="track"><i id="hpf"></i></div>
-      <div class="track ult"><i id="engf"></i></div>
+    <div id="hud">
+      <div id="wave"></div>
+      <div id="party"></div>
+      <div id="bar">
+        <span id="hpn"></span>
+        <div class="track"><i id="hpf"></i></div>
+        <div class="track ult"><i id="engf"></i></div>
+      </div>
+      <div id="msg"></div>
     </div>
-    <div id="msg"></div>
-  </div>
 
-  <div id="stick"><div id="knob"></div></div>
+    <div id="stick"><div id="knob"></div></div>
 
-  <button class="b" id="b-atk" data-a="atk">攻撃</button>
-  <button class="b" id="b-skill" data-a="skill">スキル</button>
-  <button class="b" id="b-ult" data-a="ult">必殺</button>
-  <button class="b" id="b-dodge" data-a="dodge">回避</button>
-  <button class="b" id="b-parry" data-a="parry">パリィ</button>
+    <button class="b" id="b-atk" data-a="atk">攻撃</button>
+    <button class="b" id="b-skill" data-a="skill">スキル</button>
+    <button class="b" id="b-ult" data-a="ult">必殺</button>
+    <button class="b" id="b-dodge" data-a="dodge">回避</button>
+    <button class="b" id="b-parry" data-a="parry">パリィ</button>
 
-  <div id="ov">
-    <h1 id="ovh">NEON RIFT</h1>
-    <p id="ovt">3人のパーティで3ウェーブを突破。<br>画面左をなぞって移動、右のボタンで戦闘。<br>右上のキャラをタップで交代できます。</p>
-    <button id="go">出撃</button>
+    <div id="ov">
+      <h1 id="ovh">NEON RIFT</h1>
+      <p id="ovt">3人のパーティで3ウェーブを突破。<br>画面左をなぞって移動、右のボタンで戦闘。<br>右上のキャラをタップで交代できます。</p>
+      <button id="go">出撃</button>
+    </div>
+
+    <div id="rot">端末を横向きにしてください</div>
   </div>
 
   <script type="module" src="./main.js"></script>
