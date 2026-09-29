@@ -1,0 +1,15 @@
+{
+  "name": "NEON RIFT",
+  "short_name": "NEON RIFT",
+  "description": "近未来SF 3Dアクションゲーム",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0a1424",
+  "theme_color": "#0a1424",
+  "icons": [
+    { "src": "icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable" },
+    { "src": "icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
