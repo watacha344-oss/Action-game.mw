@@ -42,12 +42,15 @@
       <button id="go">出撃</button>
     </div>
 
+    <div id="dbg"></div>
     <div id="rot">端末を横向きにしてください</div>
   </div>
 
   <script type="module" src="./main.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
+      var had = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', function () { if (had) location.reload(); });
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('./sw.js').catch(function (e) { console.warn('SW failed', e); });
       });

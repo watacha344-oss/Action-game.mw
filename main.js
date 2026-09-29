@@ -37,6 +37,8 @@ function fit() {
   st.setProperty('--vw', w + 'px');
   st.setProperty('--vh', h + 'px');
   st.setProperty('--u', U.toFixed(3));
+  const dbg = document.getElementById('dbg');
+  if (dbg) dbg.textContent = 'v4  ' + w + 'x' + h + '  x' + U.toFixed(2);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
