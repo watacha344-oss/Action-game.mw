@@ -1,4 +1,4 @@
-const CACHE = 'neon-rift-flat-v4';
+const CACHE = 'neon-rift-flat-v5';
 const CORE = [
   './', './index.html', './main.js', './style.css', './three.module.min.js',
   './manifest.json', './icon-192.svg', './icon-512.svg',

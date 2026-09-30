@@ -38,7 +38,7 @@ function fit() {
   st.setProperty('--vh', h + 'px');
   st.setProperty('--u', U.toFixed(3));
   const dbg = document.getElementById('dbg');
-  if (dbg) dbg.textContent = 'v4  ' + w + 'x' + h + '  x' + U.toFixed(2);
+  if (dbg) dbg.textContent = 'v5  ' + w + 'x' + h + '  x' + U.toFixed(2);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -69,18 +69,19 @@ function makeBody(color, s = 1) {
 
 /* ---------- データ ---------- */
 const DEFS = [
-  { name: 'アカリ', role: '近接', color: 0x00e5ff, hp: 130, atk: 14, range: 2.8, arc: 2.0, cd: 5 },
-  { name: 'ノア', role: '遠距離/バフ', color: 0xff5ad1, hp: 90, atk: 11, range: 9, arc: 0.4, cd: 7 },
-  { name: 'ミオ', role: '回復/補助', color: 0x7dff8a, hp: 105, atk: 9, range: 5, arc: 0.8, cd: 8 },
+  { name: 'アカリ', role: '近接', color: 0xff6a3d, el: 'fire', hp: 130, atk: 14, range: 2.8, arc: 2.0, cd: 5 },
+  { name: 'ノア', role: '遠距離/バフ', color: 0xffe14d, el: 'volt', hp: 90, atk: 11, range: 9, arc: 0.4, cd: 7 },
+  { name: 'ミオ', role: '回復/補助', color: 0x7dff8a, el: 'wind', hp: 105, atk: 9, range: 5, arc: 0.8, cd: 8 },
 ];
 const party = DEFS.map((d) => ({ ...d, cur: d.hp, alive: true, cdT: 0 }));
 
 let mode = 'title';
 let cur = 0, energy = 0, buffT = 0, shieldT = 0, slow = 0, inv = 0, face = 0;
 let combo = 0, comboT = 0, swapCd = 0, dodgeCd = 0, parryCd = 0, flashP = 0, msgT = 0;
-let wave = 0, time = 0, holdAtk = false;
+let wave = 0, time = 0, holdAtk = false, hitstop = 0, shake = 0;
 let act = { type: '', t: 0 };
 const dash = new THREE.Vector3();
+const cam = new THREE.Vector3(0, 9, 9.5);
 const mv = { x: 0, y: 0 };
 const enemies = [];
 const fxs = [];
@@ -149,6 +150,66 @@ const relAtk = () => { holdAtk = false; };
 window.addEventListener('pointerup', relAtk);
 window.addEventListener('pointercancel', relAtk);
 
+/* ---------- 属性・反応・演出 ---------- */
+const EL = {
+  fire: { n: '炎', c: 0xff6a3d }, ice: { n: '氷', c: 0x6fe6ff }, volt: { n: '雷', c: 0xffe14d },
+  wind: { n: '風', c: 0x7dff8a }, light: { n: '光', c: 0xfff3b0 }, dark: { n: '闇', c: 0xb06bff },
+};
+const WEAK = { ice: 'fire', volt: 'wind', wind: 'volt', light: 'dark', dark: 'light' };
+const RX = [
+  ['fire', 'ice', '融解', 'melt'], ['fire', 'volt', '過負荷', 'over'], ['ice', 'volt', '超伝導', 'super'],
+  ['light', 'dark', '崩壊', 'collapse'], ['ice', 'dark', '凍結', 'freeze'],
+];
+function react(a, b) {
+  for (const [x, y, n, k] of RX) if ((a === x && b === y) || (a === y && b === x)) return { n, k };
+  if (a === 'wind' || b === 'wind') {
+    const o = a === 'wind' ? b : a;
+    if (o === 'fire' || o === 'ice' || o === 'volt') return { n: '拡散', k: 'spread', el: o };
+  }
+  return null;
+}
+
+let AC = null;
+function sfx(f, d = 0.1, type = 'square', v = 0.08, f2 = f) {
+  if (!AC) return;
+  const o = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+  o.type = type;
+  o.frequency.setValueAtTime(f, t);
+  o.frequency.exponentialRampToValueAtTime(Math.max(30, f2), t + d);
+  g.gain.setValueAtTime(v, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + d);
+  o.connect(g);
+  g.connect(AC.destination);
+  o.start(t);
+  o.stop(t + d);
+}
+
+function popup(p, text, color, big) {
+  const v = new THREE.Vector3(p.x + rnd(-0.3, 0.3), 2.4, p.z).project(camera);
+  const app = $('app'), d = document.createElement('div');
+  d.className = 'dmg' + (big ? ' big' : '');
+  d.textContent = text;
+  d.style.color = '#' + color.toString(16).padStart(6, '0');
+  d.style.left = (v.x * 0.5 + 0.5) * app.clientWidth + 'px';
+  d.style.top = (-v.y * 0.5 + 0.5) * app.clientHeight + 'px';
+  app.appendChild(d);
+  setTimeout(() => d.remove(), 800);
+}
+
+function clearTg(e) { if (e.tg) { scene.remove(e.tg); e.tg = null; } }
+
+/* 予兆: 赤=塗りつぶし円(回避) / 黄=リング(パリィ) */
+function makeTg(e, kind) {
+  const rng = e.boss ? 3.4 : 2.3;
+  const g = kind === 'red' ? new THREE.CircleGeometry(rng + 0.5, 32) : new THREE.RingGeometry(rng - 0.1, rng + 0.5, 32);
+  const m = new THREE.Mesh(g.rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({
+    color: kind === 'red' ? 0xff2020 : 0xffd21a, transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+  }));
+  m.position.set(e.m.position.x, 0.05, e.m.position.z);
+  scene.add(m);
+  return m;
+}
+
 /* ---------- 戦闘 ---------- */
 const mul = () => (buffT > 0 ? 1.5 : 1);
 const angTo = (p) => Math.atan2(p.x - player.position.x, p.z - player.position.z);
@@ -166,15 +227,62 @@ function fx(r, color) {
   fxs.push({ m, t: 0.3 });
 }
 
-function hurt(e, dmg) {
+function hurt(e, dmg, el, big) {
   if (e.stun > 0) dmg *= 1.5;
+  if (e.vuln > 0) dmg *= 1.3;
   e.hp -= dmg;
   e.flash = 0.12;
   energy = Math.min(100, energy + dmg * 0.25);
-  if (e.hp <= 0) { e.dead = true; scene.remove(e.m); }
+  popup(e.m.position, Math.round(dmg), EL[el].c, big);
+  hitstop = big ? 0.09 : 0.04;
+  shake = Math.max(shake, big ? 0.35 : 0.12);
+  sfx(big ? 260 : 180, 0.08, 'square', 0.06, 90);
+  if (e.hp <= 0) { e.dead = true; clearTg(e); scene.remove(e.m); }
 }
 
-function strike(range, arc, dmg) {
+/* 属性ダメージ: 耐性/弱点 → 付着 → 反応 */
+function hit(e, dmg, el) {
+  if (e.dead) return;
+  if (el === e.el) dmg *= 0.5;
+  else if (el === WEAK[e.el]) dmg *= 1.3;
+  hurt(e, dmg, el, false);
+  if (e.dead) return;
+  const a = e.aura;
+  if (!a) { e.aura = el; e.auraT = 6; return; }
+  if (a === el) { e.auraT = 6; return; }
+  const r = react(a, el);
+  if (!r) return;
+  e.aura = null;
+  popup(e.m.position, r.n + '!', 0xffffff, true);
+  sfx(400, 0.25, 'sawtooth', 0.08, 900);
+  shake = 0.5;
+  const p = e.m.position;
+  if (r.k === 'melt') hurt(e, dmg * 2, 'fire', true);
+  else if (r.k === 'over') {
+    hurt(e, dmg, 'fire', true);
+    for (const o of enemies) {
+      if (o.dead || o === e) continue;
+      const dx = o.m.position.x - p.x, dz = o.m.position.z - p.z, d = Math.hypot(dx, dz) || 1;
+      if (d < 3.5) {
+        hurt(o, dmg * 0.8, 'fire', false);
+        if (!o.dead) { o.m.position.x += (dx / d) * 1.5; o.m.position.z += (dz / d) * 1.5; }
+      }
+    }
+  } else if (r.k === 'super') e.vuln = 8;
+  else if (r.k === 'collapse') hurt(e, 60, 'dark', true);
+  else if (r.k === 'freeze') { e.stun = 2.5; clearTg(e); e.state = 'chase'; e.t = 1.5; }
+  else if (r.k === 'spread') {
+    for (const o of enemies) {
+      if (o.dead || o === e) continue;
+      if (Math.hypot(o.m.position.x - p.x, o.m.position.z - p.z) < 4.5) {
+        if (!o.aura) { o.aura = r.el; o.auraT = 6; }
+        hurt(o, dmg * 0.5, r.el, false);
+      }
+    }
+  }
+}
+
+function strike(range, arc, dmg, el = party[cur].el) {
   for (const e of enemies) {
     if (e.dead) continue;
     const p = e.m.position;
@@ -185,7 +293,7 @@ function strike(range, arc, dmg) {
       const diff = Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
       if (diff > arc / 2 + e.r / Math.max(d, 0.5)) continue;
     }
-    hurt(e, dmg);
+    hit(e, dmg, el);
   }
 }
 
@@ -256,6 +364,7 @@ const ACT = {
     fx(12, 0xffffff);
     strike(12, 7, 90 * mul());
     say('必殺!');
+    sfx(100, 0.6, 'sawtooth', 0.12, 400);
   },
   swap(idx) {
     if (mode !== 'play' || swapCd > 0) return;
@@ -275,33 +384,38 @@ const ACT = {
     inv = 0.4;
     comboT = 0;
     fx(3, party[n].color);
-    strike(3, 7, 16 * mul());
+    strike(6, 7, 16 * mul());
   },
 };
 
-function playerHit(dmg, e) {
+function playerHit(dmg, e, kind) {
   if (inv > 0) return;
   if (act.type === 'dodge') {
     slow = 1.4;
     inv = 0.3;
     energy = Math.min(100, energy + 20);
     say('ジャスト回避!');
+    sfx(600, 0.15, 'sine', 0.06, 200);
     return;
   }
-  if (act.type === 'parry') {
+  if (act.type === 'parry' && kind === 'yellow') {
     e.stun = e.boss ? 1.4 : 2.2;
     e.state = 'chase';
     e.t = 1.5;
     energy = Math.min(100, energy + 25);
     fx(2.5, 0xffffff);
     say('パリィ!');
+    sfx(1200, 0.12, 'triangle', 0.1, 1800);
     return;
   }
+  if (act.type === 'parry') say('赤い攻撃はパリィ不可!');
   if (shieldT > 0) dmg *= 0.4;
   const c = party[cur];
   c.cur -= dmg;
   inv = 0.6;
   flashP = 0.15;
+  shake = 0.4;
+  sfx(120, 0.2, 'sawtooth', 0.1, 60);
   body.userData.mat.emissive.setHex(0xff0000);
   if (c.cur <= 0) {
     c.cur = 0;
@@ -316,12 +430,16 @@ function playerHit(dmg, e) {
 
 /* ---------- 敵 ---------- */
 function spawn(boss) {
+  const el = boss ? (Math.random() < 0.5 ? 'fire' : 'volt') : wave === 1 ? 'ice' : ['ice', 'ice', 'fire', 'volt', 'wind'][Math.floor(rnd(0, 5))];
   const a = rnd(0, Math.PI * 2);
-  const m = makeBody(boss ? 0xff3355 : 0xff8a3d, boss ? 2 : 1);
+  const m = makeBody(EL[el].c, boss ? 2 : 1);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: EL[el].c }));
+  orb.position.y = boss ? 4.3 : 2.5;
+  m.add(orb);
   m.position.set(Math.cos(a) * 14, 0, Math.sin(a) * 14);
   scene.add(m);
   const hp = boss ? 420 : 45;
-  enemies.push({ m, hp, boss, r: boss ? 1.2 : 0.5, state: 'chase', t: rnd(1, 2), stun: 0, flash: 0, dead: false });
+  enemies.push({ m, orb, el, aura: el, auraT: 9999, vuln: 0, kind: 'red', tg: null, hp, boss, r: boss ? 1.2 : 0.5, state: 'chase', t: rnd(1, 2), stun: 0, flash: 0, dead: false });
 }
 
 function nextWave() {
@@ -338,6 +456,10 @@ function updEnemies(dt) {
     if (e.dead) continue;
     const p = e.m.position, mat = e.m.userData.mat;
     e.flash -= dt;
+    e.vuln -= dt;
+    if (e.aura && e.auraT < 900) { e.auraT -= dt; if (e.auraT <= 0) e.aura = null; }
+    e.orb.visible = !!e.aura;
+    if (e.aura) e.orb.material.color.setHex(EL[e.aura].c);
     const dx = player.position.x - p.x, dz = player.position.z - p.z;
     const d = Math.hypot(dx, dz) || 0.001;
     const rng = e.boss ? 3.4 : 2.3;
@@ -352,12 +474,13 @@ function updEnemies(dt) {
       } else {
         e.t -= dt;
       }
-      if (e.t <= 0 && d <= rng * 1.2) { e.state = 'wind'; e.t = e.boss ? 0.9 : 0.7; }
+      if (e.t <= 0 && d <= rng * 1.2) { e.state = 'wind'; e.t = e.boss ? 0.9 : 0.7; e.kind = Math.random() < 0.5 ? 'red' : 'yellow'; e.tg = makeTg(e, e.kind); }
     } else {
       e.t -= dt;
-      mat.emissive.setHex(0xffcc00);
+      mat.emissive.setHex(e.kind === 'red' ? 0xff0000 : 0xffcc00);
       if (e.t <= 0) {
-        if (d <= rng + 0.5) playerHit(e.boss ? 26 : 12, e);
+        clearTg(e);
+        if (d <= rng + 0.5) playerHit(e.boss ? 26 : 12, e, e.kind);
         e.state = 'chase';
         e.t = rnd(1, 2);
       }
@@ -387,12 +510,14 @@ function finish(win) {
 }
 
 function start() {
-  enemies.forEach((e) => scene.remove(e.m));
+  try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); AC.resume(); } catch (err) { AC = null; }
+  enemies.forEach((e) => { clearTg(e); scene.remove(e.m); });
   enemies.length = 0;
   party.forEach((p) => { p.cur = p.hp; p.alive = true; p.cdT = 0; });
   cur = 0;
   setBody();
   player.position.set(0, 0, 0);
+  cam.set(0, 9, 9.5);
   face = 0; energy = 0; buffT = 0; shieldT = 0; slow = 0; inv = 0; combo = 0; comboT = 0;
   wave = 0; time = 0;
   act = { type: '', t: 0 };
@@ -408,6 +533,7 @@ function start() {
 $('go').addEventListener('click', start);
 
 function update(dtReal) {
+  if (hitstop > 0) { hitstop -= dtReal; return; }
   slow = Math.max(0, slow - dtReal);
   const dt = slow > 0 ? dtReal * 0.3 : dtReal;
   time += dtReal;
@@ -450,10 +576,11 @@ function update(dtReal) {
   }
 
   const k = 1 - Math.exp(-6 * dtReal);
-  camera.position.x += (player.position.x - camera.position.x) * k;
-  camera.position.z += (player.position.z + 9.5 - camera.position.z) * k;
-  camera.position.y = 9;
-  camera.lookAt(camera.position.x, 0.5, camera.position.z - 9.5);
+  cam.x += (player.position.x - cam.x) * k;
+  cam.z += (player.position.z + 9.5 - cam.z) * k;
+  shake = Math.max(0, shake - dtReal * 1.5);
+  camera.position.set(cam.x + rnd(-shake, shake), 9 + rnd(-shake, shake) * 0.5, cam.z + rnd(-shake, shake));
+  camera.lookAt(cam.x, 0.5, cam.z - 9.5);
 }
 
 /* ---------- HUD ---------- */
@@ -461,7 +588,7 @@ const cards = party.map((p, i) => {
   const c = document.createElement('div');
   c.className = 'card';
   c.style.setProperty('--c', '#' + p.color.toString(16).padStart(6, '0'));
-  c.innerHTML = `<b>${p.name}</b><small>${p.role}</small><i><u></u></i>`;
+  c.innerHTML = `<b>${p.name}</b><small>${p.role}・${EL[p.el].n}</small><i><u></u></i>`;
   c.addEventListener('pointerdown', (e) => { e.preventDefault(); ACT.swap(i); });
   $('party').appendChild(c);
   return { c, u: c.querySelector('u') };
