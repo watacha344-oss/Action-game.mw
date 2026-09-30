@@ -8,6 +8,7 @@ html, body { position: fixed; left: 0; top: 0; width: 100%; height: 100%; margin
 
 /* 画面左半分どこでもスティック操作(触った位置にスティックが出る) */
 #zone { position: absolute; left: 0; top: 0; width: 48%; height: 100%; z-index: 1; }
+#look { position: absolute; left: 48%; top: 0; width: 52%; height: 100%; z-index: 1; }
 #stick { position: absolute; left: calc(40px * var(--u) + env(safe-area-inset-left)); bottom: calc(30px * var(--u)); width: calc(140px * var(--u)); height: calc(140px * var(--u)); border-radius: 50%; background: rgba(0, 229, 255, .08); border: 2px solid rgba(0, 229, 255, .3); display: grid; place-items: center; z-index: 2; pointer-events: none; }
 #stick.on { background: rgba(0, 229, 255, .16); border-color: rgba(0, 229, 255, .7); }
 #knob { width: calc(56px * var(--u)); height: calc(56px * var(--u)); border-radius: 50%; background: rgba(0, 229, 255, .55); }
@@ -42,7 +43,8 @@ html, body { position: fixed; left: 0; top: 0; width: 100%; height: 100%; margin
 #b-skill { right: calc(146px * var(--u) + env(safe-area-inset-right)); bottom: calc(34px * var(--u));  width: calc(66px * var(--u));  height: calc(66px * var(--u));  border-color: #7dff8a; }
 #b-ult   { right: calc(138px * var(--u) + env(safe-area-inset-right)); bottom: calc(110px * var(--u)); width: calc(66px * var(--u));  height: calc(66px * var(--u));  border-color: #ff5ad1; }
 #b-dodge { right: calc(40px * var(--u) + env(safe-area-inset-right));  bottom: calc(140px * var(--u)); width: calc(62px * var(--u));  height: calc(62px * var(--u)); }
-#b-parry { right: calc(222px * var(--u) + env(safe-area-inset-right)); bottom: calc(54px * var(--u));  width: calc(58px * var(--u));  height: calc(58px * var(--u)); }
+#b-lock  { right: calc(222px * var(--u) + env(safe-area-inset-right)); bottom: calc(54px * var(--u));  width: calc(58px * var(--u));  height: calc(58px * var(--u)); }
+.b.on { background: rgba(0, 229, 255, .55); border-color: #fff; }
 
 #ov { position: absolute; inset: 0; z-index: 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(12px * var(--u)); background: rgba(10, 20, 36, .9); text-align: center; }
 #ov h1 { margin: 0; font-size: calc(44px * var(--u)); letter-spacing: .12em; color: #00e5ff; text-shadow: 0 0 18px #00e5ff; }

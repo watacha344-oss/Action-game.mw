@@ -38,7 +38,7 @@ function fit() {
   st.setProperty('--vh', h + 'px');
   st.setProperty('--u', U.toFixed(3));
   const dbg = document.getElementById('dbg');
-  if (dbg) dbg.textContent = 'v5  ' + w + 'x' + h + '  x' + U.toFixed(2);
+  if (dbg) dbg.textContent = 'v6  ' + w + 'x' + h + '  x' + U.toFixed(2);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -80,8 +80,17 @@ let cur = 0, energy = 0, buffT = 0, shieldT = 0, slow = 0, inv = 0, face = 0;
 let combo = 0, comboT = 0, swapCd = 0, dodgeCd = 0, parryCd = 0, flashP = 0, msgT = 0;
 let wave = 0, time = 0, holdAtk = false, hitstop = 0, shake = 0;
 let act = { type: '', t: 0 };
+let lock = null, yaw = 0, pitch = 0.75;
 const dash = new THREE.Vector3();
-const cam = new THREE.Vector3(0, 9, 9.5);
+const cam = new THREE.Vector3(0, 0, 0);
+const lockMark = new THREE.Mesh(
+  new THREE.RingGeometry(0.7, 0.9, 24).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+);
+lockMark.visible = false;
+scene.add(lockMark);
+/* カメラ向き基準の移動方向(スティック入力 → ワールド座標) */
+const wdir = (x, y) => ({ x: x * Math.cos(yaw) + y * Math.sin(yaw), z: -x * Math.sin(yaw) + y * Math.cos(yaw) });
 const mv = { x: 0, y: 0 };
 const enemies = [];
 const fxs = [];
@@ -130,12 +139,32 @@ const stickEnd = (e) => {
 zone.addEventListener('pointerup', stickEnd);
 zone.addEventListener('pointercancel', stickEnd);
 
+const look = $('look');
+let lid = null, lx = 0, ly = 0;
+look.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  if (lid !== null) return;
+  lid = e.pointerId;
+  look.setPointerCapture(lid);
+  lx = e.clientX; ly = e.clientY;
+});
+look.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== lid) return;
+  const dx = e.clientX - lx, dy = e.clientY - ly;
+  lx = e.clientX; ly = e.clientY;
+  if (!lock) yaw -= dx * 0.008;
+  pitch = Math.max(0.25, Math.min(1.3, pitch + dy * 0.006));
+});
+const lookEnd = (e) => { if (e.pointerId === lid) lid = null; };
+look.addEventListener('pointerup', lookEnd);
+look.addEventListener('pointercancel', lookEnd);
+
 const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (e.repeat) return;
-  const a = { KeyJ: 'atk', KeyK: 'dodge', KeyL: 'parry', KeyU: 'skill', KeyI: 'ult', KeyQ: 'swap' }[e.code];
-  if (a) ACT[a]();
+  const a = { KeyJ: 'atk', KeyK: 'dodge', KeyL: 'lock', KeyU: 'skill', KeyI: 'ult', KeyQ: 'swap' }[e.code];
+  if (a) ACT[a](true);
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
@@ -143,7 +172,7 @@ document.querySelectorAll('.b').forEach((b) => {
   b.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (b.dataset.a === 'atk') holdAtk = true;
-    ACT[b.dataset.a]();
+    ACT[b.dataset.a](true);
   });
 });
 const relAtk = () => { holdAtk = false; };
@@ -198,12 +227,21 @@ function popup(p, text, color, big) {
 
 function clearTg(e) { if (e.tg) { scene.remove(e.tg); e.tg = null; } }
 
-/* 予兆: 赤=塗りつぶし円(回避) / 黄=リング(パリィ) */
+/* 予兆: 赤い円=回避のみ / 光の輪=縮んで重なる瞬間に攻撃ボタンでパリィ */
 function makeTg(e, kind) {
+  if (kind === 'parry') {
+    const g = new THREE.Group();
+    const mk = (col, op) => new THREE.Mesh(new THREE.RingGeometry(0.9, 1.0, 40), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, depthTest: false, side: THREE.DoubleSide }));
+    const fix = mk(0xffffff, 0.9), mov = mk(0x88ddff, 1);
+    fix.renderOrder = mov.renderOrder = 10;
+    g.add(fix, mov);
+    g.position.set(e.m.position.x, e.boss ? 3.2 : 1.6, e.m.position.z);
+    scene.add(g);
+    return g;
+  }
   const rng = e.boss ? 3.4 : 2.3;
-  const g = kind === 'red' ? new THREE.CircleGeometry(rng + 0.5, 32) : new THREE.RingGeometry(rng - 0.1, rng + 0.5, 32);
-  const m = new THREE.Mesh(g.rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({
-    color: kind === 'red' ? 0xff2020 : 0xffd21a, transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+  const m = new THREE.Mesh(new THREE.CircleGeometry(rng + 0.5, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({
+    color: 0xff2020, transparent: true, opacity: 0.35, side: THREE.DoubleSide,
   }));
   m.position.set(e.m.position.x, 0.05, e.m.position.z);
   scene.add(m);
@@ -297,18 +335,48 @@ function strike(range, arc, dmg, el = party[cur].el) {
   }
 }
 
-function aim() {
-  let best = null, bd = 10;
+function nearest(maxD = 40) {
+  let best = null, bd = maxD;
   for (const e of enemies) {
     if (e.dead) continue;
     const d = e.m.position.distanceTo(player.position);
     if (d < bd) { bd = d; best = e; }
   }
-  if (best) face = angTo(best.m.position);
+  return best;
+}
+
+function aim() {
+  const t = lock && !lock.dead ? lock : nearest(10);
+  if (t) face = angTo(t.m.position);
+}
+
+/* 光の輪がほぼ重なった瞬間に攻撃ボタンを押すとパリィ成功 */
+function tryParry() {
+  if (mode !== 'play' || act.type === 'ult') return false;
+  for (const e of enemies) {
+    if (e.dead || e.state !== 'wind' || e.kind !== 'parry' || e.t > 0.25 || e.t <= 0) continue;
+    if (e.m.position.distanceTo(player.position) > (e.boss ? 6 : 5)) continue;
+    e.stun = e.boss ? 1.6 : 2.5;
+    e.state = 'chase';
+    e.t = 1.5;
+    clearTg(e);
+    energy = Math.min(100, energy + 25);
+    act = { type: 'parry', t: 0.25 };
+    inv = 0.4;
+    hitstop = 0.12;
+    shake = 0.4;
+    face = angTo(e.m.position);
+    fx(2.5, 0xffffff);
+    say('パリィ!');
+    sfx(1200, 0.12, 'triangle', 0.1, 1800);
+    return true;
+  }
+  return false;
 }
 
 const ACT = {
-  atk() {
+  atk(fresh) {
+    if (fresh && tryParry()) return;
     if (!free()) return;
     aim();
     const c = party[cur];
@@ -322,17 +390,16 @@ const ACT = {
   dodge() {
     if (mode !== 'play' || dodgeCd > 0 || act.type === 'ult') return;
     const l = Math.hypot(mv.x, mv.y);
-    if (l > 0.2) dash.set(mv.x / l, 0, mv.y / l);
+    if (l > 0.2) { const w = wdir(mv.x, mv.y); dash.set(w.x / l, 0, w.z / l); }
     else dash.set(Math.sin(face), 0, Math.cos(face));
     face = Math.atan2(dash.x, dash.z);
     act = { type: 'dodge', t: 0.3 };
     dodgeCd = 0.5;
   },
-  parry() {
-    if (!free() || parryCd > 0) return;
-    act = { type: 'parry', t: 0.3 };
-    parryCd = 0.8;
-    fx(1.6, 0xffffff);
+  lock() {
+    if (lock) { lock = null; return; }
+    lock = nearest();
+    if (!lock) say('敵がいません');
   },
   skill() {
     const c = party[cur];
@@ -398,17 +465,6 @@ function playerHit(dmg, e, kind) {
     sfx(600, 0.15, 'sine', 0.06, 200);
     return;
   }
-  if (act.type === 'parry' && kind === 'yellow') {
-    e.stun = e.boss ? 1.4 : 2.2;
-    e.state = 'chase';
-    e.t = 1.5;
-    energy = Math.min(100, energy + 25);
-    fx(2.5, 0xffffff);
-    say('パリィ!');
-    sfx(1200, 0.12, 'triangle', 0.1, 1800);
-    return;
-  }
-  if (act.type === 'parry') say('赤い攻撃はパリィ不可!');
   if (shieldT > 0) dmg *= 0.4;
   const c = party[cur];
   c.cur -= dmg;
@@ -474,10 +530,14 @@ function updEnemies(dt) {
       } else {
         e.t -= dt;
       }
-      if (e.t <= 0 && d <= rng * 1.2) { e.state = 'wind'; e.t = e.boss ? 0.9 : 0.7; e.kind = Math.random() < 0.5 ? 'red' : 'yellow'; e.tg = makeTg(e, e.kind); }
+      if (e.t <= 0 && d <= rng * 1.2) { e.state = 'wind'; e.kind = Math.random() < (e.boss ? 0.5 : 0.35) ? 'parry' : 'red'; e.T = e.kind === 'parry' ? (e.boss ? 1.2 : 1.0) : (e.boss ? 0.9 : 0.7); e.t = e.T; e.tg = makeTg(e, e.kind); }
     } else {
       e.t -= dt;
-      mat.emissive.setHex(e.kind === 'red' ? 0xff0000 : 0xffcc00);
+      mat.emissive.setHex(e.kind === 'red' ? 0xff0000 : 0x88ddff);
+      if (e.kind === 'parry' && e.tg) {
+        e.tg.quaternion.copy(camera.quaternion);
+        e.tg.children[1].scale.setScalar(1 + 1.6 * Math.max(0, e.t) / e.T);
+      }
       if (e.t <= 0) {
         clearTg(e);
         if (d <= rng + 0.5) playerHit(e.boss ? 26 : 12, e, e.kind);
@@ -517,7 +577,8 @@ function start() {
   cur = 0;
   setBody();
   player.position.set(0, 0, 0);
-  cam.set(0, 9, 9.5);
+  cam.set(0, 0, 0);
+  yaw = 0; pitch = 0.75; lock = null;
   face = 0; energy = 0; buffT = 0; shieldT = 0; slow = 0; inv = 0; combo = 0; comboT = 0;
   wave = 0; time = 0;
   act = { type: '', t: 0 };
@@ -553,9 +614,10 @@ function update(dtReal) {
   } else if (l > 0.15) {
     const f = act.type === 'ult' ? 0 : act.type ? 0.35 : 1;
     const s = 6.5 * f * Math.min(l, 1) * dtReal;
-    player.position.x += (mv.x / l) * s;
-    player.position.z += (mv.y / l) * s;
-    if (!act.type) face = Math.atan2(mv.x, mv.y);
+    const w = wdir(mv.x, mv.y);
+    player.position.x += (w.x / l) * s;
+    player.position.z += (w.z / l) * s;
+    if (!act.type) face = Math.atan2(w.x, w.z);
   }
   const r = Math.hypot(player.position.x, player.position.z);
   if (r > 17) { player.position.x *= 17 / r; player.position.z *= 17 / r; }
@@ -577,10 +639,24 @@ function update(dtReal) {
 
   const k = 1 - Math.exp(-6 * dtReal);
   cam.x += (player.position.x - cam.x) * k;
-  cam.z += (player.position.z + 9.5 - cam.z) * k;
+  cam.z += (player.position.z - cam.z) * k;
+  if (lock && lock.dead) lock = nearest();
+  if (lock) {
+    const ty = Math.atan2(player.position.x - lock.m.position.x, player.position.z - lock.m.position.z);
+    yaw += Math.atan2(Math.sin(ty - yaw), Math.cos(ty - yaw)) * Math.min(1, 5 * dtReal);
+    lockMark.position.set(lock.m.position.x, 0.1, lock.m.position.z);
+    lockMark.rotation.y += dtReal * 2;
+    lockMark.scale.setScalar(lock.boss ? 2 : 1);
+  }
+  lockMark.visible = !!lock;
   shake = Math.max(0, shake - dtReal * 1.5);
-  camera.position.set(cam.x + rnd(-shake, shake), 9 + rnd(-shake, shake) * 0.5, cam.z + rnd(-shake, shake));
-  camera.lookAt(cam.x, 0.5, cam.z - 9.5);
+  const cp = Math.cos(pitch) * 13;
+  camera.position.set(
+    cam.x + Math.sin(yaw) * cp + rnd(-shake, shake),
+    Math.sin(pitch) * 13 + rnd(-shake, shake) * 0.5,
+    cam.z + Math.cos(yaw) * cp + rnd(-shake, shake)
+  );
+  camera.lookAt(cam.x, 0.8, cam.z);
 }
 
 /* ---------- HUD ---------- */
@@ -605,6 +681,7 @@ function hud() {
   $('hpn').textContent = party[cur].name + '  ' + Math.ceil(party[cur].cur) + '/' + party[cur].hp;
   const cd = party[cur].cdT;
   $('b-ult').classList.toggle('off', energy < 100);
+  $('b-lock').classList.toggle('on', !!lock);
   $('b-skill').classList.toggle('off', cd > 0);
   $('b-skill').textContent = cd > 0 ? Math.ceil(cd) : 'スキル';
   $('msg').style.opacity = msgT > 0 ? 1 : 0;
